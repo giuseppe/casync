@@ -169,6 +169,8 @@ struct CaEncoder {
         uint64_t feature_flags;
         uint64_t covering_feature_flags; /* feature flags the used file systems actually support */
 
+        char *base_path;
+
         uint64_t time_granularity;
 
         CaEncoderNode nodes[NODES_MAX];
@@ -311,6 +313,7 @@ CaEncoder *ca_encoder_unref(CaEncoder *e) {
 
         free(e->cached_user_name);
         free(e->cached_group_name);
+        free(e->base_path);
 
         realloc_buffer_free(&e->buffer);
         realloc_buffer_free(&e->xattr_list_buffer);
@@ -364,7 +367,7 @@ int ca_encoder_get_covering_feature_flags(CaEncoder *e, uint64_t *ret) {
         return 0;
 }
 
-int ca_encoder_set_base_fd(CaEncoder *e, int fd) {
+int ca_encoder_set_base_fd(CaEncoder *e, int fd, const char *base_path) {
         struct stat st;
         struct statfs sfs;
 
@@ -398,6 +401,12 @@ int ca_encoder_set_base_fd(CaEncoder *e, int fd) {
                 .has_exclude_file = CA_ENCODER_HAS_EXCLUDE_FILE_DONT_KNOW,
         };
 
+        if (base_path) {
+                e->base_path = canonicalize_file_name(base_path);
+                if (!e->base_path)
+                        return -errno;
+        }
+        
         e->n_nodes = 1;
 
         return 0;
@@ -3634,11 +3643,13 @@ static int ca_encoder_seek_path(CaEncoder *e, const char *path) {
                 size_t l = strcspn(path, "/");
                 char name[l + 1];
 
-                if (l <= 0)
-                        return -EINVAL;
-
                 if (!S_ISDIR(node->stat.st_mode))
                         return -ENOTDIR;
+
+                if (l == 0) {
+                        path++;
+                        continue;
+                }
 
                 memcpy(name, path, l);
                 name[l] = 0;
@@ -3651,6 +3662,8 @@ static int ca_encoder_seek_path(CaEncoder *e, const char *path) {
                 if (*path == 0)
                         break;
                 path++;
+                if(*path == 0)
+                        break;
 
                 r = ca_encoder_enter_child(e);
                 if (r < 0)
@@ -3702,8 +3715,7 @@ static int ca_encoder_node_install_name_table(CaEncoder *e, CaEncoderNode *node,
 
                 t = t->parent;
                 if (!t) {
-                        log_debug("Name table chain ended prematurely.");
-                        return -ESPIPE;
+                        return 0;
                 }
         }
 

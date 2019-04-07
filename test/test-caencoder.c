@@ -28,7 +28,7 @@ static int encode(int dfd, int fd) {
                 goto finish;
         }
 
-        r = ca_encoder_set_base_fd(e, dfd);
+        r = ca_encoder_set_base_fd(e, dfd, NULL);
         if (r < 0)
                 goto finish;
 

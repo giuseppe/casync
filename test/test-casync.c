@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 
         base_fd = open(".", O_RDONLY|O_CLOEXEC|O_DIRECTORY);
         assert_se(base_fd >= 0);
-        assert_se(ca_sync_set_base_fd(s, base_fd) >= 0);
+        assert_se(ca_sync_set_base_fd(s, base_fd, NULL) >= 0);
 
         assert_se(ca_sync_enable_archive_digest(s, true) >= 0);
         assert_se(ca_sync_set_store_path(s, teststore) >= 0);
@@ -73,7 +73,7 @@ step2:
         base_fd = open(testtree, O_RDONLY|O_CLOEXEC|O_DIRECTORY);
 
         assert_se(base_fd >= 0);
-        assert_se(ca_sync_set_base_fd(s, base_fd) >= 0);
+        assert_se(ca_sync_set_base_fd(s, base_fd, NULL) >= 0);
 
         assert_se(ca_sync_enable_archive_digest(s, true) >= 0);
         assert_se(ca_sync_set_store_path(s, teststore) >= 0);

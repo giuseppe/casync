@@ -60,7 +60,7 @@ int ca_sync_set_index_remote(CaSync *sync, const char *url);
 int ca_sync_set_index_auto(CaSync *s, const char *locator);
 
 /* The raw, unarchived ("user") tree */
-int ca_sync_set_base_fd(CaSync *sync, int fd);
+int ca_sync_set_base_fd(CaSync *s, int fd, const char *path);
 int ca_sync_set_base_path(CaSync *sync, const char *path);
 int ca_sync_set_base_mode(CaSync *sync, mode_t mode);
 
@@ -86,7 +86,7 @@ int ca_sync_add_store_auto(CaSync *sync, const char *locator);
 
 /* Additional seeds to use */
 int ca_sync_add_seed_fd(CaSync *sync, int fd);
-int ca_sync_add_seed_path(CaSync *sync, const char *path, const char *cache);
+int ca_sync_add_seed_path(CaSync *sync, const char *path, const char *cache, bool cache_only);
 
 /* Path to use as cache */
 int ca_sync_set_cache_fd(CaSync *sync, int fd);

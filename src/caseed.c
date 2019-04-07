@@ -32,6 +32,8 @@ struct CaSeed {
         int cache_fd;
         char *cache_path;
 
+        char *base_path;
+        
         CaChunker chunker;
         CaDigest *chunk_digest;
 
@@ -39,6 +41,7 @@ struct CaSeed {
         bool remove_cache:1;
         bool cache_hardlink:1;
         bool cache_chunks:1;
+        bool cache_only:1;
 
         ReallocBuffer buffer;
         CaLocation *buffer_location;
@@ -102,7 +105,8 @@ CaSeed *ca_seed_unref(CaSeed *s) {
         safe_close(s->base_fd);
         safe_close(s->cache_fd);
         free(s->cache_path);
-
+        free(s->base_path);
+        
         ca_digest_free(s->chunk_digest);
 
         realloc_buffer_free(&s->buffer);
@@ -137,6 +141,10 @@ int ca_seed_set_base_path(CaSeed *s, const char *path) {
 
         s->base_fd = open(path, O_CLOEXEC|O_NOCTTY|O_RDONLY);
         if (s->base_fd < 0)
+                return -errno;
+
+        s->base_path = strdup(path);
+        if (!s->base_path)
                 return -errno;
 
         return 0;
@@ -193,7 +201,7 @@ static int ca_seed_open(CaSeed *s) {
                 if (r < 0)
                         return r;
 
-                r = ca_encoder_set_base_fd(s->encoder, s->base_fd);
+                r = ca_encoder_set_base_fd(s->encoder, s->base_fd, s->base_path);
                 if (r < 0)
                         return r;
 
@@ -250,6 +258,7 @@ static int ca_seed_make_chunk_id(CaSeed *s, const void *p, size_t l, CaChunkID *
 static int ca_seed_write_cache_entry(CaSeed *s, CaLocation *location, const void *data, size_t l) {
         char ids[CA_CHUNK_ID_FORMAT_MAX];
         const char *t, *four, *combined;
+        CaFileRoot *root;
         CaChunkID id;
         int r;
 
@@ -258,7 +267,15 @@ static int ca_seed_write_cache_entry(CaSeed *s, CaLocation *location, const void
         assert(data);
         assert(l > 0);
 
+        r = ca_seed_get_file_root(s, &root);
+        if (r < 0)
+                return r;
+
         r = ca_location_patch_size(&location, l);
+        if (r < 0)
+                return r;
+
+        r = ca_location_patch_root(&location, root);
         if (r < 0)
                 return r;
 
@@ -465,6 +482,15 @@ finish:
         return r;
 }
 
+int ca_seed_set_cache_only(CaSeed *s, bool cache_only) {
+        if (!s)
+                return -EINVAL;
+
+        s->cache_only = cache_only;
+
+        return 0;
+}
+
 int ca_seed_step(CaSeed *s) {
         int r;
 
@@ -473,7 +499,7 @@ int ca_seed_step(CaSeed *s) {
 
         if (s->ready)
                 return -EALREADY;
-
+        
         if (!s->cache_chunks && !s->cache_hardlink) {
                 if (s->last_step_nsec == 0)
                         s->last_step_nsec = now(CLOCK_MONOTONIC);
@@ -488,6 +514,11 @@ int ca_seed_step(CaSeed *s) {
         r = ca_seed_open(s);
         if (r < 0)
                 return r;
+
+        if (s->cache_only) {
+                s->ready = true;
+                return CA_SEED_READY;
+        }
 
         for (;;) {
                 int step;
@@ -872,7 +903,7 @@ int ca_seed_get_file_root(CaSeed *s, CaFileRoot **ret) {
                 } else
                         return -EUNATCH;
 
-                r = ca_file_root_new(NULL, base_fd, &s->root);
+                r = ca_file_root_new(s->base_path, base_fd, &s->root);
                 if (r < 0)
                         return r;
         }

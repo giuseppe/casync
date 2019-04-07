@@ -759,7 +759,13 @@ static int load_seeds_and_extra_stores(CaSync *s) {
         }
 
         STRV_FOREACH(i, arg_seeds) {
-                r = ca_sync_add_seed_path(s, *i, arg_seed_cache);
+                r = ca_sync_add_seed_path(s, *i, arg_seed_cache, false);
+                if (r < 0)
+                        log_error("Failed to add seed %s, ignoring: %m", *i);
+        }
+
+        if (arg_seed_cache) {
+                r = ca_sync_add_seed_path(s, "/", arg_seed_cache, true);
                 if (r < 0)
                         log_error("Failed to add seed %s, ignoring: %m", *i);
         }
@@ -1335,7 +1341,7 @@ static int verb_make(int argc, char *argv[]) {
                         return log_error_errno(r, "Failed to set rate limit: %m");
         }
 
-        r = ca_sync_set_base_fd(s, input_fd);
+        r = ca_sync_set_base_fd(s, input_fd, NULL);
         if (r < 0)
                 return log_error_errno(r, "Failed to set sync base: %m");
         input_fd = -1;
@@ -1616,13 +1622,19 @@ static int verb_extract(int argc, char *argv[]) {
         if (!s)
                 return log_oom();
 
+        if (arg_cache) {
+                r = ca_sync_set_cache_path(s, arg_cache);
+                if (r < 0)
+                        return log_error_errno(r, "Failed to set cache: %m");
+        }
+
         if (IN_SET(operation, EXTRACT_ARCHIVE_INDEX, EXTRACT_BLOB_INDEX)) {
                 r = set_default_store(input);
                 if (r < 0)
                         return r;
 
                 if (arg_seed_output) {
-                        r = ca_sync_add_seed_path(s, output, arg_seed_cache);
+                        r = ca_sync_add_seed_path(s, output, arg_seed_cache, false);
                         if (r < 0 && r != -ENOENT)
                                 log_error_errno(r, "Failed to add existing file as seed %s, ignoring: %m", output);
                 }
@@ -1641,7 +1653,7 @@ static int verb_extract(int argc, char *argv[]) {
                         r = ca_sync_set_boundary_path(s, output);
         } else {
                 if (output_fd >= 0)
-                        r = ca_sync_set_base_fd(s, output_fd);
+                        r = ca_sync_set_base_fd(s, output_fd, output);
                 else {
                         r = ca_sync_set_base_mode(s, IN_SET(operation, EXTRACT_ARCHIVE, EXTRACT_ARCHIVE_INDEX) ? S_IFDIR : S_IFREG);
                         if (r < 0)
@@ -2268,7 +2280,7 @@ static int verb_list(int argc, char *argv[]) {
                 else
                         r = ca_sync_set_index_auto(s, input);
         } else if (operation == LIST_DIRECTORY)
-                r = ca_sync_set_base_fd(s, input_fd);
+                r = ca_sync_set_base_fd(s, input_fd, NULL);
         else
                 assert(false);
         if (r < 0)
@@ -2565,7 +2577,7 @@ static int verb_digest(int argc, char *argv[]) {
                 return r;
 
         if (operation == DIGEST_DIRECTORY || (operation == DIGEST_BLOB && input_fd >= 0))
-                r = ca_sync_set_base_fd(s, input_fd);
+                r = ca_sync_set_base_fd(s, input_fd, NULL);
         else if (IN_SET(operation, DIGEST_ARCHIVE_INDEX, DIGEST_BLOB_INDEX)) {
                 if (input_fd >= 0)
                         r = ca_sync_set_index_fd(s, input_fd);
